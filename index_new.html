@@ -1,0 +1,562 @@
+<!-- 片元着色器 -->
+<script id="fragmentShader" type="fragment">
+  #extension GL_OES_standard_derivatives : enable
+  precision mediump float;
+
+  varying vec4 fragcolor;
+  varying vec3 fragPosition;
+  varying vec3 fragNormal;
+  varying vec3 vLightColor1;
+  varying vec3 vLightLoc1;
+  varying vec3 vLightColor2;
+  varying vec3 vLightLoc2;
+  varying float vKa;
+  uniform int fsShadingType;
+  uniform float clipPlaneX; // X轴裁剪平面
+
+  void main(void) {
+      if(fragPosition.x > clipPlaneX) {
+          discard;
+      }
+      if(fsShadingType == 0) { // Flat shading
+          vec3 dx = dFdx(fragPosition);
+          vec3 dy = dFdy(fragPosition);
+          vec3 N = normalize(cross(dx, dy));
+
+          vec3 L1 = normalize(vLightLoc1 - fragPosition);
+          vec3 V = -normalize(fragPosition);
+          vec3 H1 = normalize(L1 + V);
+
+          vec3 L2 = normalize(vLightLoc2 - fragPosition);
+          vec3 H2 = normalize(L2 + V);
+
+          float kd = 0.6;
+          float ks = 0.3;
+
+          vec3 ambient1 = vKa * vLightColor1;
+          vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * vLightColor1;
+          vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * vLightColor1;
+
+          vec3 ambient2 = vKa * vLightColor2;
+          vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * vLightColor2;
+          vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * vLightColor2;
+
+          vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+          gl_FragColor = vec4(fragcolor.rgb * lightEffect, 1.0);
+      }
+      else if(fsShadingType == 1) { // Gouraud shading
+          gl_FragColor = fragcolor;
+      }
+      else { // Phong shading
+          vec3 N = normalize(fragNormal);
+          vec3 L1 = normalize(vLightLoc1 - fragPosition);
+          vec3 V = -normalize(fragPosition);
+          vec3 H1 = normalize(L1 + V);
+
+          vec3 L2 = normalize(vLightLoc2 - fragPosition);
+          vec3 H2 = normalize(L2 + V);
+
+          float kd = 0.6;
+          float ks = 0.3;
+
+          vec3 ambient1 = vKa * vLightColor1;
+          vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * vLightColor1;
+          vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * vLightColor1;
+
+          vec3 ambient2 = vKa * vLightColor2;
+          vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * vLightColor2;
+          vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * vLightColor2;
+
+          vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+          gl_FragColor = vec4(fragcolor.rgb * lightEffect, 1.0);
+      }
+  }
+</script>
+
+<!-- 顶点着色器 -->
+<script id="vertexShader" type="vertex">
+  attribute vec3 aVertexPosition;
+  attribute vec3 aFrontColor;
+  attribute vec3 aVertexNormal;
+
+  uniform mat4 uMVMatrix;
+  uniform mat4 uPMatrix;
+  uniform float Ka;
+  uniform vec3 lightLoc1;
+  uniform vec3 lightLoc2;
+  uniform vec3 lightColor1;
+  uniform vec3 lightColor2;
+  uniform int vsShadingType;
+
+  varying vec4 fragcolor;
+  varying vec3 fragPosition;
+  varying vec3 fragNormal;
+  varying vec3 vLightColor1;
+  varying vec3 vLightLoc1;
+  varying vec3 vLightColor2;
+  varying vec3 vLightLoc2;
+  varying float vKa;
+
+  void main(void) {
+      vec3 mvVertex = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
+      mat3 normalMVMatrix = mat3(uMVMatrix);
+      vec3 mvNormal = normalMVMatrix * aVertexNormal;
+
+      vLightColor1 = lightColor1;
+      vLightLoc1 = lightLoc1;
+      vLightColor2 = lightColor2;
+      vLightLoc2 = lightLoc2;
+      vKa = Ka;
+      fragPosition = mvVertex;
+      fragNormal = mvNormal;
+
+      if(vsShadingType == 0) { // Flat shading
+          fragcolor = vec4(aFrontColor, 1.0);
+      }
+      else if(vsShadingType == 1) { // Gouraud shading
+          vec3 N = normalize(mvNormal);
+          vec3 L1 = normalize(lightLoc1 - mvVertex);
+          vec3 V = -normalize(mvVertex);
+          vec3 H1 = normalize(L1 + V);
+
+          vec3 L2 = normalize(lightLoc2 - mvVertex);
+          vec3 H2 = normalize(L2 + V);
+
+          float kd = 0.6;
+          float ks = 0.3;
+
+          vec3 ambient1 = Ka * lightColor1;
+          vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * lightColor1;
+          vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * lightColor1;
+
+          vec3 ambient2 = Ka * lightColor2;
+          vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * lightColor2;
+          vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * lightColor2;
+
+          vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+          fragcolor = vec4(aFrontColor * lightEffect, 1.0);
+      }
+      else { // Phong shading
+          fragcolor = vec4(aFrontColor, 1.0);
+      }
+      gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+  }
+</script>
+
+<script type="text/javascript">
+  // 全局变量
+  var gl;
+  var shaderProgram;
+  var mvMatrix = mat4.create();
+  var pMatrix  = mat4.create();
+  
+  // 模型缓冲区
+  var teapotVertexPositionBuffer;
+  var teapotVertexNormalBuffer;
+  var teapotVertexFrontColorBuffer;
+  
+  var csieVertexPositionBuffer;
+  var csieVertexNormalBuffer;
+  var csieVertexFrontColorBuffer;
+  
+  var tomcatVertexPositionBuffer;
+  var tomcatVertexNormalBuffer;
+  var tomcatVertexFrontColorBuffer;
+  
+  var teapotAngle = 180;
+  var lastTime    = 0;
+  var shadingType = 1; // 默认 Gouraud shading
+  var ka = 0.1;
+  
+  // 光源参数
+  var light_locations1 = new Float32Array([30., 20., -25.]);
+  var light_colors1 = new Float32Array([1.0, 0.8, 0.8]);
+  var light_locations2 = new Float32Array([-20., 15., -40.]);
+  var light_colors2 = new Float32Array([0.8, 0.8, 1.0]);
+  
+  var clipPlaneX = 0.0; // X轴裁剪平面位置
+  
+  // 新增：记录加载模型的数量
+  var modelsLoaded = 0;
+  
+  // 初始化 WebGL
+  function initGL(canvas) {
+      try {
+          gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+          gl.viewportWidth  = canvas.width;
+          gl.viewportHeight = canvas.height;
+      } catch (e) { }
+      if (!gl) {
+          alert("Could not initialise WebGL");
+          return;
+      }
+      var ext = gl.getExtension('OES_standard_derivatives');
+      if (!ext) {
+          alert("OES_standard_derivatives extension is not supported.");
+          return;
+      }
+  }
+  
+  function getShader(gl, id) {
+      var shaderScript = document.getElementById(id);
+      if (!shaderScript) return null;
+      var shaderSource = "";
+      var k = shaderScript.firstChild;
+      while (k) {
+          if (k.nodeType == 3)
+              shaderSource += k.textContent;
+          k = k.nextSibling;
+      }
+      var shader;
+      if (shaderScript.type == "fragment") {
+          shader = gl.createShader(gl.FRAGMENT_SHADER);
+      } else if (shaderScript.type == "vertex") {
+          shader = gl.createShader(gl.VERTEX_SHADER);
+      } else return null;
+      gl.shaderSource(shader, shaderSource);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          alert(gl.getShaderInfoLog(shader));
+          return null;
+      }
+      return shader;
+  }
+  
+  function initShaders() {
+      var fragmentShader = getShader(gl, "fragmentShader");
+      var vertexShader = getShader(gl, "vertexShader");
+      if (!fragmentShader || !vertexShader) return;
+      shaderProgram = gl.createProgram();
+      gl.attachShader(shaderProgram, vertexShader);
+      gl.attachShader(shaderProgram, fragmentShader);
+      gl.linkProgram(shaderProgram);
+      if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+          alert("Could not initialise shaders. Error: " + gl.getProgramInfoLog(shaderProgram));
+          return;
+      }
+      gl.useProgram(shaderProgram);
+      
+      shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+      gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+      shaderProgram.vertexFrontColorAttribute = gl.getAttribLocation(shaderProgram, "aFrontColor");
+      gl.enableVertexAttribArray(shaderProgram.vertexFrontColorAttribute);
+      shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+      gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+      
+      gl.uniform1f(gl.getUniformLocation(shaderProgram, "Ka"), ka);
+      gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc1"), light_locations1);
+      gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc2"), light_locations2);
+      gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor1"), light_colors1);
+      gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor2"), light_colors2);
+      gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
+      gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
+      gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneX"), clipPlaneX);
+      
+      shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+      shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+  }
+  
+  function setMatrixUniforms() {
+      gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+      gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+  }
+  
+  function degToRad(degrees) {
+      return degrees * Math.PI / 180;
+  }
+  
+  // 修改 handleLoadedTeapot：加载茶壶模型并记录加载数量
+  function handleLoadedTeapot(teapotData) {
+      teapotVertexPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexPositions), gl.STATIC_DRAW);
+      teapotVertexPositionBuffer.itemSize = 3;
+      teapotVertexPositionBuffer.numItems = teapotData.vertexPositions.length / 3;
+  
+      teapotVertexNormalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexNormals), gl.STATIC_DRAW);
+      teapotVertexNormalBuffer.itemSize = 3;
+      teapotVertexNormalBuffer.numItems = teapotData.vertexNormals.length / 3;
+  
+      teapotVertexFrontColorBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexFrontcolors), gl.STATIC_DRAW);
+      teapotVertexFrontColorBuffer.itemSize = 3;
+      teapotVertexFrontColorBuffer.numItems = teapotData.vertexFrontcolors.length / 3;
+      
+      modelsLoaded++;
+  }
+  
+  // 新增：加载 CSIE 模型
+  function handleLoadedCsie(csieData) {
+      csieVertexPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexPositionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexPositions), gl.STATIC_DRAW);
+      csieVertexPositionBuffer.itemSize = 3;
+      csieVertexPositionBuffer.numItems = csieData.vertexPositions.length / 3;
+  
+      csieVertexNormalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexNormalBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexNormals), gl.STATIC_DRAW);
+      csieVertexNormalBuffer.itemSize = 3;
+      csieVertexNormalBuffer.numItems = csieData.vertexNormals.length / 3;
+  
+      csieVertexFrontColorBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexFrontColorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexFrontcolors), gl.STATIC_DRAW);
+      csieVertexFrontColorBuffer.itemSize = 3;
+      csieVertexFrontColorBuffer.numItems = csieData.vertexFrontcolors.length / 3;
+  
+      modelsLoaded++;
+  }
+  
+  // 新增：加载 Tomcat 模型
+  function handleLoadedTomcat(tomcatData) {
+      tomcatVertexPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tomcatVertexPositionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tomcatData.vertexPositions), gl.STATIC_DRAW);
+      tomcatVertexPositionBuffer.itemSize = 3;
+      tomcatVertexPositionBuffer.numItems = tomcatData.vertexPositions.length / 3;
+  
+      tomcatVertexNormalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tomcatVertexNormalBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tomcatData.vertexNormals), gl.STATIC_DRAW);
+      tomcatVertexNormalBuffer.itemSize = 3;
+      tomcatVertexNormalBuffer.numItems = tomcatData.vertexNormals.length / 3;
+  
+      tomcatVertexFrontColorBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tomcatVertexFrontColorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tomcatData.vertexFrontcolors), gl.STATIC_DRAW);
+      tomcatVertexFrontColorBuffer.itemSize = 3;
+      tomcatVertexFrontColorBuffer.numItems = tomcatData.vertexFrontcolors.length / 3;
+  
+      modelsLoaded++;
+  }
+  
+  // 加载模型函数
+  function loadTeapot() {
+      var request = new XMLHttpRequest();
+      request.open("GET", "./model/Teapot.json");
+      request.onreadystatechange = function () {
+          if (request.readyState == 4) {
+              handleLoadedTeapot(JSON.parse(request.responseText));
+          }
+      }
+      request.send();
+  }
+  
+  function loadCsie() {
+      var request = new XMLHttpRequest();
+      request.open("GET", "./model/Csie.json");
+      request.onreadystatechange = function () {
+          if (request.readyState == 4) {
+              handleLoadedCsie(JSON.parse(request.responseText));
+          }
+      }
+      request.send();
+  }
+  
+  function loadTomcat() {
+      var request = new XMLHttpRequest();
+      request.open("GET", "./model/Tomcat.json");
+      request.onreadystatechange = function () {
+          if (request.readyState == 4) {
+              handleLoadedTomcat(JSON.parse(request.responseText));
+          }
+      }
+      request.send();
+  }
+  
+  // 修改后的 drawScene，绘制三个模型
+  function drawScene() {
+      gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+      gl.clearColor(ka, ka, ka, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  
+      // 如果所有模型未加载完成则不绘制
+      if (modelsLoaded < 3) {
+          return;
+      }
+  
+      // 设置投影矩阵
+      mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+  
+      // 分别绘制三个模型：
+      // 茶壶：放置在中间
+      drawModel("teapot", [0, 0, -50], [0, 0, 0], 0.8);
+      // CSIE 模型：放置在左侧
+      drawModel("csie", [-50, 0, -50], [0, 0, 0], 10.0);
+      // Tomcat 模型：放置在右侧
+      drawModel("tomcat", [40, 0, -50], [0, 0, 0], 8.0);
+  }
+  
+  // 新增：drawModel 函数，根据模型类型绘制对应模型
+  function drawModel(modelType, position, initialRotation, modelScale) {
+      // 保存当前模型视图矩阵
+      var mvMatrix_copy = mat4.create();
+      mat4.set(mvMatrix, mvMatrix_copy);
+  
+      // 重置模型视图矩阵
+      mat4.identity(mvMatrix);
+  
+      // 应用用户平移及模型初始位置
+      var userTrans = update_trans();
+      mat4.translate(mvMatrix, [position[0] + parseFloat(userTrans[0]), position[1] + parseFloat(userTrans[1]), position[2] + parseFloat(userTrans[2])]);
+  
+      // 应用初始旋转（这里可根据需要调整）
+      mat4.rotate(mvMatrix, degToRad(initialRotation[0]), [1, 0, 0]);
+      mat4.rotate(mvMatrix, degToRad(initialRotation[1]), [0, 1, 0]);
+      mat4.rotate(mvMatrix, degToRad(initialRotation[2]), [0, 0, 1]);
+  
+      // 应用用户旋转（例如在 Y 轴上加上 teapotAngle 实现自动旋转）
+      var rotateVec = update_rotate();
+      mat4.rotate(mvMatrix, degToRad(rotateVec[0]), [1, 0, 0]);
+      mat4.rotate(mvMatrix, degToRad(rotateVec[1] + teapotAngle), [0, 1, 0]);
+      mat4.rotate(mvMatrix, degToRad(rotateVec[2]), [0, 0, 1]);
+  
+      // 应用模型特定缩放
+      mat4.scale(mvMatrix, [modelScale, modelScale, modelScale]);
+      // 应用用户缩放
+      var scaleVec = update_scale();
+      mat4.scale(mvMatrix, scaleVec);
+  
+      // 应用剪切变换
+      var shearVals = update_shear();
+      applyShear(mvMatrix, shearVals[0], shearVals[1], shearVals[2]);
+  
+      setMatrixUniforms();
+  
+      // 根据模型类型选择相应的缓冲区
+      var posBuffer, normalBuffer, colorBuffer;
+      if (modelType === "teapot") {
+          posBuffer = teapotVertexPositionBuffer;
+          normalBuffer = teapotVertexNormalBuffer;
+          colorBuffer = teapotVertexFrontColorBuffer;
+      } else if (modelType === "csie") {
+          posBuffer = csieVertexPositionBuffer;
+          normalBuffer = csieVertexNormalBuffer;
+          colorBuffer = csieVertexFrontColorBuffer;
+      } else if (modelType === "tomcat") {
+          posBuffer = tomcatVertexPositionBuffer;
+          normalBuffer = tomcatVertexNormalBuffer;
+          colorBuffer = tomcatVertexFrontColorBuffer;
+      }
+  
+      // 设置顶点位置、颜色、法线数据
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+      gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, posBuffer.itemSize, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+      gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, colorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+      gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, normalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+  
+      gl.drawArrays(gl.TRIANGLES, 0, posBuffer.numItems);
+  
+      // 恢复原始模型视图矩阵
+      mat4.set(mvMatrix_copy, mvMatrix);
+  }
+  
+  function animate() {
+      var timeNow = new Date().getTime();
+      if (lastTime != 0) {
+          var elapsed = timeNow - lastTime;
+          teapotAngle += 0.03 * elapsed;
+      }
+      lastTime = timeNow;
+  }
+  
+  function tick() {
+      requestAnimFrame(tick);
+      drawScene();
+      animate();
+  }
+  
+  function webGLStart() {
+      var canvas = document.getElementById("ICG-canvas");
+      initGL(canvas);
+      initShaders();
+      // 加载三个模型
+      loadTeapot();
+      loadCsie();
+      loadTomcat();
+  
+      gl.clearColor(ka, ka, ka, 1.0);
+      gl.enable(gl.DEPTH_TEST);
+  
+      tick();
+  }
+  
+  // 以下为原有参数更新函数（平移、旋转、缩放、剪切、裁剪、光照等）
+  function update_ambient_light(){
+      ka = document.getElementById("am_ka").value;
+  }
+  
+  function update_light_location(){
+      light_locations1[0] = document.getElementById("llocX1").value;
+      light_locations1[1] = document.getElementById("llocY1").value;
+      light_locations1[2] = document.getElementById("llocZ1").value;
+      light_locations2[0] = document.getElementById("llocX2").value;
+      light_locations2[1] = document.getElementById("llocY2").value;
+      light_locations2[2] = document.getElementById("llocZ2").value;
+  }
+  
+  function update_light_color(){
+      light_colors1[0] = document.getElementById("lcolR1").value;
+      light_colors1[1] = document.getElementById("lcolG1").value;
+      light_colors1[2] = document.getElementById("lcolB1").value;
+      light_colors2[0] = document.getElementById("lcolR2").value;
+      light_colors2[1] = document.getElementById("lcolG2").value;
+      light_colors2[2] = document.getElementById("lcolB2").value;
+  }
+  
+  function update_trans(){
+      var tx = document.getElementById("transX").value;
+      var ty = document.getElementById("transY").value;
+      var tz = document.getElementById("transZ").value;
+      return vec3.create([tx, ty, tz]);
+  }
+  
+  function update_rotate(){
+      var rx = document.getElementById("rotateX").value;
+      var ry = document.getElementById("rotateY").value;
+      var rz = document.getElementById("rotateZ").value;
+      return vec3.create([rx, ry, rz]);
+  }
+  
+  function update_scale(){
+      var sx = document.getElementById("scaleX").value;
+      var sy = document.getElementById("scaleY").value;
+      var sz = document.getElementById("scaleZ").value;
+      return vec3.create([sx, sy, sz]);
+  }
+  
+  function update_shear(){
+      var xy = document.getElementById("shearXY").value;
+      var xz = document.getElementById("shearXZ").value;
+      var yz = document.getElementById("shearYZ").value;
+      return vec3.create([xy, xz, yz]);
+  }
+  
+  function applyShear(matrix, xy, xz, yz) {
+      var shearMatrix = mat4.create();
+      mat4.identity(shearMatrix);
+      shearMatrix[4] = parseFloat(xy);
+      shearMatrix[8] = parseFloat(xz);
+      shearMatrix[9] = parseFloat(yz);
+      mat4.multiply(matrix, shearMatrix);
+  }
+  
+  function update_clip_plane(){
+      clipPlaneX = document.getElementById("clipPlaneX").value;
+  }
+  
+  function updateShadingType() {
+      shadingType = parseInt(document.getElementById("shadingType").value);
+      gl.useProgram(shaderProgram);
+      gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
+      gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
+      var shadingLabel = document.getElementById("shadingTypeLabel");
+      shadingLabel.textContent = shadingType === 0 ? "Flat shading" : shadingType === 1 ? "Gouraud shading" : "Phong shading";
+  }
+</script>

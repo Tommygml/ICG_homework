@@ -1,0 +1,857 @@
+<html>
+
+<head>
+<title>ICG WebGL &mdash; HW1</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+<script type="text/javascript" src="./js/glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="./js/webgl-utils.js"></script>
+
+<!-- 
+    TODO HERE: 
+    modify fragment shader or write another one
+    to implement flat, gouraud and phong shading
+ -->
+<script id="fragmentShader" type="fragment">
+    #extension GL_OES_standard_derivatives : enable
+    precision mediump float;
+
+    varying vec4 fragcolor;
+    varying vec3 fragPosition;
+    varying vec3 fragNormal;
+    varying vec3 vLightColor1;
+    varying vec3 vLightLoc1;
+    varying vec3 vLightColor2;
+    varying vec3 vLightLoc2;
+    varying float vKa;
+    uniform int fsShadingType;
+    uniform float clipPlaneX; // 添加X軸裁剪平面位置
+
+    void main(void) {
+        // 判斷是否被裁剪掉
+        if(fragPosition.x > clipPlaneX) {
+            discard; // 丟棄片段，不進行渲染
+        }
+
+        if(fsShadingType == 0) { // Flat shading
+            // 計算面法向量 (使用 derivatives 計算相鄰片段的差異來獲得面法向量)
+            vec3 dx = dFdx(fragPosition);
+            vec3 dy = dFdy(fragPosition);
+            vec3 N = normalize(cross(dx, dy));
+
+            // 第一個光源
+            vec3 L1 = normalize(vLightLoc1 - fragPosition);
+            vec3 V = -normalize(fragPosition);
+            vec3 H1 = normalize(L1 + V);
+
+            // 第二個光源
+            vec3 L2 = normalize(vLightLoc2 - fragPosition);
+            vec3 H2 = normalize(L2 + V);
+
+            float kd = 0.6;
+            float ks = 0.3;
+
+            // 第一個光源的貢獻
+            vec3 ambient1 = vKa * vLightColor1;
+            vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * vLightColor1;
+            vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * vLightColor1;
+
+            // 第二個光源的貢獻
+            vec3 ambient2 = vKa * vLightColor2;
+            vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * vLightColor2;
+            vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * vLightColor2;
+
+            // 組合兩個光源的效果
+            vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+            gl_FragColor = vec4(fragcolor.rgb * lightEffect, 1.0);
+        }
+        else if(fsShadingType == 1) { // Gouraud shading
+            // 直接使用頂點著色器計算的顏色
+            gl_FragColor = fragcolor;
+        }
+        else { // Phong shading
+            vec3 N = normalize(fragNormal);
+            
+            // 第一個光源
+            vec3 L1 = normalize(vLightLoc1 - fragPosition);
+            vec3 V = -normalize(fragPosition);
+            vec3 H1 = normalize(L1 + V);
+
+            // 第二個光源
+            vec3 L2 = normalize(vLightLoc2 - fragPosition);
+            vec3 H2 = normalize(L2 + V);
+
+            float kd = 0.6;
+            float ks = 0.3;
+
+            // 第一個光源的貢獻
+            vec3 ambient1 = vKa * vLightColor1;
+            vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * vLightColor1;
+            vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * vLightColor1;
+
+            // 第二個光源的貢獻
+            vec3 ambient2 = vKa * vLightColor2;
+            vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * vLightColor2;
+            vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * vLightColor2;
+
+            // 組合兩個光源的效果
+            vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+            gl_FragColor = vec4(fragcolor.rgb * lightEffect, 1.0);
+        }
+    }
+</script>
+
+<!-- 
+    TODO HERE:
+    modify vertex shader or write another one
+    to implement flat, gouraud and phong shading
+
+    NOTE:
+    if you want to write bonus part (texture mapping),
+    only Teapot.json has extra attribute "vertexTextureCoords"
+    which is used for texture mappping.
+ -->
+<script id="vertexShader" type="vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aFrontColor;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform float Ka;
+    uniform vec3 lightLoc1;
+    uniform vec3 lightLoc2;
+    uniform vec3 lightColor1;
+    uniform vec3 lightColor2;
+    uniform int vsShadingType;
+
+    varying vec4 fragcolor;
+    varying vec3 fragPosition;
+    varying vec3 fragNormal;
+    varying vec3 vLightColor1;
+    varying vec3 vLightLoc1;
+    varying vec3 vLightColor2;
+    varying vec3 vLightLoc2;
+    varying float vKa;
+
+    void main(void) {
+        vec3 mvVertex = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
+        mat3 normalMVMatrix = mat3(uMVMatrix);
+        vec3 mvNormal = normalMVMatrix * aVertexNormal;
+
+        // 對所有著色模式都傳遞必要的數據
+        vLightColor1 = lightColor1;
+        vLightLoc1 = lightLoc1;
+        vLightColor2 = lightColor2;
+        vLightLoc2 = lightLoc2;
+        vKa = Ka;
+        fragPosition = mvVertex;
+        fragNormal = mvNormal;
+
+        if(vsShadingType == 0) { // Flat shading
+            // 對於平面著色，我們只需傳遞基本顏色
+            // 光照計算將在片段著色器中使用面法向量進行
+            fragcolor = vec4(aFrontColor, 1.0);
+        }
+        else if(vsShadingType == 1) { // Gouraud shading
+            // 在頂點著色器中計算光照
+            vec3 N = normalize(mvNormal);
+            
+            // 第一個光源
+            vec3 L1 = normalize(lightLoc1 - mvVertex);
+            vec3 V = -normalize(mvVertex);
+            vec3 H1 = normalize(L1 + V);
+
+            // 第二個光源
+            vec3 L2 = normalize(lightLoc2 - mvVertex);
+            vec3 H2 = normalize(L2 + V);
+
+            float kd = 0.6;
+            float ks = 0.3;
+
+            // 第一個光源的貢獻
+            vec3 ambient1 = Ka * lightColor1;
+            vec3 diffuse1 = kd * max(dot(N, L1), 0.0) * lightColor1;
+            vec3 specular1 = ks * pow(max(dot(N, H1), 0.0), 32.0) * lightColor1;
+
+            // 第二個光源的貢獻
+            vec3 ambient2 = Ka * lightColor2;
+            vec3 diffuse2 = kd * max(dot(N, L2), 0.0) * lightColor2;
+            vec3 specular2 = ks * pow(max(dot(N, H2), 0.0), 32.0) * lightColor2;
+            
+            // 將計算結果作為顏色傳遞
+            vec3 lightEffect = ambient1 + diffuse1 + specular1 + ambient2 + diffuse2 + specular2;
+            fragcolor = vec4(aFrontColor * lightEffect, 1.0);
+        }
+        else { // Phong shading
+            // 傳遞基本顏色，光照計算將在片段著色器中進行
+            fragcolor = vec4(aFrontColor, 1.0);
+        }
+        
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+<script type="text/javascript">
+    // common variables
+    var gl;
+    var shaderProgram;
+
+    var mvMatrix = mat4.create();
+    var pMatrix  = mat4.create();
+
+    // 茶壶模型的缓冲区
+    var teapotVertexPositionBuffer;
+    var teapotVertexNormalBuffer;
+    var teapotVertexFrontColorBuffer;
+
+    // 袋鼠模型的缓冲区
+    var kangarooVertexPositionBuffer;
+    var kangarooVertexNormalBuffer;
+    var kangarooVertexFrontColorBuffer;
+
+    // 汽车模型的缓冲区
+    var mercedesVertexPositionBuffer;
+    var mercedesVertexNormalBuffer;
+    var mercedesVertexFrontColorBuffer;
+
+    var teapotAngle = 180;
+    var lastTime    = 0;
+    var shadingType = 1; // 預設使用 Gouraud shading
+
+    var ka = 0.1;
+    var light_locations1 = new Float32Array([30., 20., -25.]); // 第一個光源位置
+    var light_colors1 = new Float32Array([1.0, 0.8, 0.8]); // 第一個光源顏色（紅色調）
+    var light_locations2 = new Float32Array([-20., 15., -40.]); // 第二個光源位置
+    var light_colors2 = new Float32Array([0.8, 0.8, 1.0]); // 第二個光源顏色（藍色調）
+    var clipPlaneX = 0.0; // 添加X軸裁剪平面位置變量
+
+    // 记录模型是否已加载
+    var modelsLoaded = {
+        teapot: false,
+        kangaroo: false,
+        mercedes: false
+    };
+
+    // 新增著色器切換函數
+    function updateShadingType() {
+        shadingType = parseInt(document.getElementById("shadingType").value);
+        gl.useProgram(shaderProgram);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
+        
+        // 更新標籤顯示
+        var shadingLabel = document.getElementById("shadingTypeLabel");
+        if(shadingType === 0) {
+            shadingLabel.textContent = "Flat shading";
+        } else if(shadingType === 1) {
+            shadingLabel.textContent = "Gouraud shading";
+        } else {
+            shadingLabel.textContent = "Phong shading";
+        }
+    }
+
+    //*************************************************
+    // Initialization functions
+    //*************************************************
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+            gl.viewportWidth  = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } 
+        catch (e) {
+        }
+
+        if (!gl) {
+            alert("Could not initialise WebGL");
+            return;
+        }
+
+        // 檢查並啟用 OES_standard_derivatives 擴展
+        var ext = gl.getExtension('OES_standard_derivatives');
+        if (!ext) {
+            alert("OES_standard_derivatives extension is not supported.");
+            return;
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var shaderSource = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                shaderSource += k.textContent;
+            }
+
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } 
+        else if (shaderScript.type == "vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } 
+        else {
+            return null;
+        }
+
+        gl.shaderSource(shader, shaderSource);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "fragmentShader");
+        var vertexShader   = getShader(gl, "vertexShader");
+
+        if (!fragmentShader || !vertexShader) {
+            return;
+        }
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders. Error: " + gl.getProgramInfoLog(shaderProgram));
+            return;
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+        shaderProgram.vertexFrontColorAttribute = gl.getAttribLocation(shaderProgram, "aFrontColor");
+        gl.enableVertexAttribArray(shaderProgram.vertexFrontColorAttribute);
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        gl.uniform1f(gl.getUniformLocation(shaderProgram, "Ka"), ka);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc1"), light_locations1);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc2"), light_locations2);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor1"), light_colors1);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor2"), light_colors2);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
+        gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneX"), clipPlaneX); // 設置裁剪平面位置
+
+        shaderProgram.pMatrixUniform  = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    }
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    function handleLoadedTeapot(teapotData) {
+        teapotVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexPositions), gl.STATIC_DRAW);
+        teapotVertexPositionBuffer.itemSize = 3;
+        teapotVertexPositionBuffer.numItems = teapotData.vertexPositions.length / 3;
+
+        teapotVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexNormals), gl.STATIC_DRAW);
+        teapotVertexNormalBuffer.itemSize = 3;
+        teapotVertexNormalBuffer.numItems = teapotData.vertexNormals.length / 3;
+
+        teapotVertexFrontColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexFrontcolors), gl.STATIC_DRAW);
+        teapotVertexFrontColorBuffer.itemSize = 3;
+        teapotVertexFrontColorBuffer.numItems = teapotData.vertexFrontcolors.length / 3;
+        
+        modelsLoaded.teapot = true;
+    }
+
+    function handleLoadedKangaroo(kangarooData) {
+        kangarooVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(kangarooData.vertexPositions), gl.STATIC_DRAW);
+        kangarooVertexPositionBuffer.itemSize = 3;
+        kangarooVertexPositionBuffer.numItems = kangarooData.vertexPositions.length / 3;
+
+        kangarooVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(kangarooData.vertexNormals), gl.STATIC_DRAW);
+        kangarooVertexNormalBuffer.itemSize = 3;
+        kangarooVertexNormalBuffer.numItems = kangarooData.vertexNormals.length / 3;
+
+        kangarooVertexFrontColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexFrontColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(kangarooData.vertexFrontcolors), gl.STATIC_DRAW);
+        kangarooVertexFrontColorBuffer.itemSize = 3;
+        kangarooVertexFrontColorBuffer.numItems = kangarooData.vertexFrontcolors.length / 3;
+        
+        modelsLoaded.kangaroo = true;
+    }
+
+    function handleLoadedMercedes(mercedesData) {
+        mercedesVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mercedesData.vertexPositions), gl.STATIC_DRAW);
+        mercedesVertexPositionBuffer.itemSize = 3;
+        mercedesVertexPositionBuffer.numItems = mercedesData.vertexPositions.length / 3;
+
+        mercedesVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mercedesData.vertexNormals), gl.STATIC_DRAW);
+        mercedesVertexNormalBuffer.itemSize = 3;
+        mercedesVertexNormalBuffer.numItems = mercedesData.vertexNormals.length / 3;
+
+        mercedesVertexFrontColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexFrontColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mercedesData.vertexFrontcolors), gl.STATIC_DRAW);
+        mercedesVertexFrontColorBuffer.itemSize = 3;
+        mercedesVertexFrontColorBuffer.numItems = mercedesData.vertexFrontcolors.length / 3;
+        
+        modelsLoaded.mercedes = true;
+    }
+
+    function loadTeapot() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "./model/Teapot.json");
+        request.onreadystatechange = function () {
+            if (request.readyState == 4) {
+                handleLoadedTeapot(JSON.parse(request.responseText));
+            }
+        }
+        request.send();
+    }
+
+    function loadKangaroo() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "./model/Kangaroo.json");
+        request.onreadystatechange = function () {
+            if (request.readyState == 4) {
+                handleLoadedKangaroo(JSON.parse(request.responseText));
+            }
+        }
+        request.send();
+    }
+
+    function loadMercedes() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "./model/Mercedes.json");
+        request.onreadystatechange = function () {
+            if (request.readyState == 4) {
+                handleLoadedMercedes(JSON.parse(request.responseText));
+            }
+        }
+        request.send();
+    }
+
+    // 加载所有模型
+    function loadModels() {
+        loadTeapot();
+        loadKangaroo();
+        loadMercedes();
+    }
+
+
+    //*************************************************
+    // Rendering functions
+    //*************************************************
+    /*
+        TODO HERE:
+        add two or more objects showing on the canvas
+        (it needs at least three objects showing at the same time)
+    */
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clearColor(ka, ka, ka, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // 检查所有模型是否已加载
+        if (!modelsLoaded.teapot || !modelsLoaded.kangaroo || !modelsLoaded.mercedes) {
+            return;
+        }
+        
+        // 确保 shadingType 和 clipPlaneX 设置正确
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
+        gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneX"), clipPlaneX);
+
+        // Setup Projection Matrix
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+
+        // 设置环境光和光源位置
+        gl.uniform1f(gl.getUniformLocation(shaderProgram, "Ka"), ka);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc1"), light_locations1);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc2"), light_locations2);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor1"), light_colors1);
+        gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightColor2"), light_colors2);
+
+        // 获取变换参数
+        var transVec = update_trans();
+        var rotateVec = update_rotate();
+        var scaleVec = update_scale();
+        var shearVals = update_shear();
+
+        //------------------------------------------------------------------
+        // 绘制茶壶
+        //------------------------------------------------------------------
+        // 设置茶壶的模型视图矩阵
+        var mvMatrixTeapot = mat4.create();
+        mat4.identity(mvMatrixTeapot);
+        mat4.translate(mvMatrixTeapot, [-20, 0, -50]);
+        
+        // 应用用户控制的变换
+        mat4.translate(mvMatrixTeapot, transVec);
+        mat4.rotate(mvMatrixTeapot, degToRad(rotateVec[0]), [1, 0, 0]);
+        mat4.rotate(mvMatrixTeapot, degToRad(rotateVec[1] + teapotAngle), [0, 1, 0]);
+        mat4.rotate(mvMatrixTeapot, degToRad(rotateVec[2]), [0, 0, 1]);
+        mat4.scale(mvMatrixTeapot, scaleVec);
+        applyShear(mvMatrixTeapot, shearVals[0], shearVals[1], shearVals[2]);
+        
+        // 设置矩阵
+        mvMatrix = mvMatrixTeapot;
+        setMatrixUniforms();
+
+        // 设置顶点数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
+                              teapotVertexPositionBuffer.itemSize, 
+                              gl.FLOAT, false, 0, 0);
+
+        // 设置颜色数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
+                              teapotVertexFrontColorBuffer.itemSize, 
+                              gl.FLOAT, false, 0, 0);
+        
+        // 设置法线数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
+                              teapotVertexNormalBuffer.itemSize, 
+                              gl.FLOAT, false, 0, 0);
+        
+        // 绘制茶壶
+        gl.drawArrays(gl.TRIANGLES, 0, teapotVertexPositionBuffer.numItems);
+
+        //------------------------------------------------------------------
+        // 绘制袋鼠
+        //------------------------------------------------------------------
+        // 设置袋鼠的模型视图矩阵
+        var mvMatrixKangaroo = mat4.create();
+        mat4.identity(mvMatrixKangaroo);
+        mat4.translate(mvMatrixKangaroo, [0, 0, -50]);
+        
+        // 缩小袋鼠模型并调整位置
+        mat4.scale(mvMatrixKangaroo, [0.4, 0.4, 0.4]);
+        
+        // 旋转袋鼠，使其面向前方
+        mat4.rotate(mvMatrixKangaroo, degToRad(teapotAngle * 0.5), [0, 1, 0]);
+        
+        // 设置矩阵
+        mvMatrix = mvMatrixKangaroo;
+        setMatrixUniforms();
+
+        // 设置顶点数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
+                               kangarooVertexPositionBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+
+        // 设置颜色数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexFrontColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
+                               kangarooVertexFrontColorBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+        
+        // 设置法线数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
+                               kangarooVertexNormalBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+        
+        // 绘制袋鼠
+        gl.drawArrays(gl.TRIANGLES, 0, kangarooVertexPositionBuffer.numItems);
+
+        //------------------------------------------------------------------
+        // 绘制汽车
+        //------------------------------------------------------------------
+        // 设置汽车的模型视图矩阵
+        var mvMatrixMercedes = mat4.create();
+        mat4.identity(mvMatrixMercedes);
+        mat4.translate(mvMatrixMercedes, [20, 0, -50]);
+        
+        // 缩小汽车模型
+        mat4.scale(mvMatrixMercedes, [0.3, 0.3, 0.3]);
+        
+        // 旋转汽车，使其面向适当方向
+        mat4.rotate(mvMatrixMercedes, degToRad(teapotAngle * 0.8), [0, 1, 0]);
+        
+        // 设置矩阵
+        mvMatrix = mvMatrixMercedes;
+        setMatrixUniforms();
+
+        // 设置顶点数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
+                               mercedesVertexPositionBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+
+        // 设置颜色数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexFrontColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
+                               mercedesVertexFrontColorBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+        
+        // 设置法线数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, mercedesVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
+                               mercedesVertexNormalBuffer.itemSize, 
+                               gl.FLOAT, false, 0, 0);
+        
+        // 绘制汽车
+        gl.drawArrays(gl.TRIANGLES, 0, mercedesVertexPositionBuffer.numItems);
+    }
+
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+            teapotAngle += 0.03 * elapsed;
+        }
+        
+        lastTime = timeNow;
+    }
+
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+
+    function webGLStart() {
+        var canvas = document.getElementById("ICG-canvas");
+        initGL(canvas);
+        initShaders();
+        loadModels(); // 加载所有模型
+
+        gl.clearColor(ka, ka, ka, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        tick();
+    }
+
+
+    //*************************************************
+    // Parsing parameters
+    //*************************************************
+    function update_ambient_light(){
+        ka = document.getElementById("am_ka").value;
+    }
+
+    function update_light_location(){
+        light_locations1[0] = document.getElementById("llocX1").value;
+        light_locations1[1] = document.getElementById("llocY1").value;
+        light_locations1[2] = document.getElementById("llocZ1").value;
+        light_locations2[0] = document.getElementById("llocX2").value;
+        light_locations2[1] = document.getElementById("llocY2").value;
+        light_locations2[2] = document.getElementById("llocZ2").value;
+    }
+    
+    function update_light_color(){
+        light_colors1[0] = document.getElementById("lcolR1").value;
+        light_colors1[1] = document.getElementById("lcolG1").value;
+        light_colors1[2] = document.getElementById("lcolB1").value;
+        light_colors2[0] = document.getElementById("lcolR2").value;
+        light_colors2[1] = document.getElementById("lcolG2").value;
+        light_colors2[2] = document.getElementById("lcolB2").value;
+    }
+
+    function update_trans(){
+        var tx = document.getElementById("transX").value;
+        var ty = document.getElementById("transY").value;
+        var tz = document.getElementById("transZ").value;
+
+        return vec3.create([tx, ty, tz]);
+    }
+
+    function update_rotate(){
+        var rx = document.getElementById("rotateX").value;
+        var ry = document.getElementById("rotateY").value;
+        var rz = document.getElementById("rotateZ").value;
+
+        return vec3.create([rx, ry, rz]);
+    }
+    
+    // 添加缩放函数
+    function update_scale(){
+        var sx = document.getElementById("scaleX").value;
+        var sy = document.getElementById("scaleY").value;
+        var sz = document.getElementById("scaleZ").value;
+
+        return vec3.create([sx, sy, sz]);
+    }
+    
+    // 添加剪切函数
+    function update_shear(){
+        var xy = document.getElementById("shearXY").value;
+        var xz = document.getElementById("shearXZ").value;
+        var yz = document.getElementById("shearYZ").value;
+
+        return vec3.create([xy, xz, yz]);
+    }
+    
+    // 应用剪切变换到矩阵
+    function applyShear(matrix, xy, xz, yz) {
+        // 创建剪切矩阵
+        var shearMatrix = mat4.create();
+        mat4.identity(shearMatrix);
+        
+        // XY平面剪切
+        shearMatrix[4] = parseFloat(xy); // x对y的剪切
+        
+        // XZ平面剪切
+        shearMatrix[8] = parseFloat(xz); // x对z的剪切
+        
+        // YZ平面剪切
+        shearMatrix[9] = parseFloat(yz); // y对z的剪切
+        
+        // 将剪切矩阵与当前模型视图矩阵相乘
+        mat4.multiply(matrix, shearMatrix);
+    }
+
+    // 添加裁剪平面更新函数
+    function update_clip_plane(){
+        clipPlaneX = document.getElementById("clipPlaneX").value;
+    }
+
+</script>
+</head>
+
+<body onload="webGLStart();">
+    <p style="position: absolute; right: 2%; top:6%; ">
+        <canvas id="ICG-canvas" style="border: none;" width="800" height="600"></canvas>
+    </p>
+
+    <p style="position: absolute; left: 1%; top: 1%; max-width: 30%; min-width: 30%; ">
+
+        <p>
+            <label for="shading">使用著色類型: <span id="shadingTypeLabel">Gouraud shading</span></label>
+        </p>
+
+        </br>
+        <span>Ambient Light</span>
+        <table>
+            <tr>
+                <td>Ka: <input style="max-width: 70%; vertical-align: middle;" id="am_ka" type="range" autocomplete="off" value="0.1" max="1." min="0." step="0.05" oninput="update_ambient_light()"></td>
+            </tr>
+        </table>
+        </br>
+        <span>Light 0</span>
+        <table>
+            <tr>
+                <td>X: <input style="max-width: 70%; vertical-align: middle;" id="llocX1" type="range" autocomplete="off" value="30." max="40." min="-40." oninput="update_light_location()"></td>
+                <td>Y: <input style="max-width: 70%; vertical-align: middle;" id="llocY1" type="range" autocomplete="off" value="20." max="40." min="-40." oninput="update_light_location()"></td>
+                <td>Z: <input style="max-width: 70%; vertical-align: middle;" id="llocZ1" type="range" autocomplete="off" value="-25." max="0." min="-75." oninput="update_light_location()"></td>
+            </tr>
+        </table>
+        <table>
+            <tr>
+                <td>R: <input style="max-width: 70%; vertical-align: middle;" id="lcolR1" type="range" autocomplete="off" value="1.0" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+                <td>G: <input style="max-width: 70%; vertical-align: middle;" id="lcolG1" type="range" autocomplete="off" value="0.8" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+                <td>B: <input style="max-width: 70%; vertical-align: middle;" id="lcolB1" type="range" autocomplete="off" value="0.8" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+            </tr>
+        </table>
+        </br>
+        <span>Light 1</span>
+        <table>
+            <tr>
+                <td>X: <input style="max-width: 70%; vertical-align: middle;" id="llocX2" type="range" autocomplete="off" value="-20." max="0." min="-40." oninput="update_light_location()"></td>
+                <td>Y: <input style="max-width: 70%; vertical-align: middle;" id="llocY2" type="range" autocomplete="off" value="15." max="20." min="-5." oninput="update_light_location()"></td>
+                <td>Z: <input style="max-width: 70%; vertical-align: middle;" id="llocZ2" type="range" autocomplete="off" value="-40." max="0." min="-80." oninput="update_light_location()"></td>
+            </tr>
+        </table>
+        <table>
+            <tr>
+                <td>R: <input style="max-width: 70%; vertical-align: middle;" id="lcolR2" type="range" autocomplete="off" value="0.8" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+                <td>G: <input style="max-width: 70%; vertical-align: middle;" id="lcolG2" type="range" autocomplete="off" value="0.8" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+                <td>B: <input style="max-width: 70%; vertical-align: middle;" id="lcolB2" type="range" autocomplete="off" value="1.0" max="1.0" min="0.0" step="0.05" oninput="update_light_color()"></td>
+            </tr>
+        </table>
+        </br>
+        <span>Clipping</span>
+        <table>
+            <tr>
+                <td>X Plane: <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneX" type="range" autocomplete="off" value="0." max="10." min="-10." step="0.1" oninput="update_clip_plane()"></td>
+            </tr>
+        </table>
+        </br>
+        </br>
+
+        <span>Object</span>
+        <table>
+            <tr>
+            <th></th>
+            <th>X axis</th>
+            <th>Y axis</th>
+            <th>Z axis</th>
+            </tr>
+            <tr>
+                <td>Trans.</td>
+                <td><input id="transX" type="range" autocomplete="off" value="0." max="50." min="-50." oninput="update_trans()"></td>
+                <td><input id="transY" type="range" autocomplete="off" value="0." max="50." min="-50." oninput="update_trans()"></td>
+                <td><input id="transZ" type="range" autocomplete="off" value="-50." max="0." min="-120." oninput="update_trans()"></td>
+            </tr>
+            <tr>
+                <td>Rotate</td>
+                <td><input id="rotateX" type="range" autocomplete="off" value="0." max="180." min="-180." oninput="update_rotate()"></td>
+                <td><input id="rotateY" type="range" autocomplete="off" value="0." max="180." min="-180." oninput="update_rotate()"></td>
+                <td><input id="rotateZ" type="range" autocomplete="off" value="0." max="180." min="-180." oninput="update_rotate()"></td>
+            </tr>
+            <tr>
+                <td>Scale</td>
+                <td><input id="scaleX" type="range" autocomplete="off" value="1." max="2.5" min="0.1" step="0.1" oninput="update_scale()"></td>
+                <td><input id="scaleY" type="range" autocomplete="off" value="1." max="2.5" min="0.1" step="0.1" oninput="update_scale()"></td>
+                <td><input id="scaleZ" type="range" autocomplete="off" value="1." max="2.5" min="0.1" step="0.1" oninput="update_scale()"></td>
+            </tr>
+            <tr>
+                <td>Shear</td>
+                <td><input id="shearXY" type="range" autocomplete="off" value="0." max="1.0" min="-1.0" step="0.1" oninput="update_shear()"></td>
+                <td><input id="shearXZ" type="range" autocomplete="off" value="0." max="1.0" min="-1.0" step="0.1" oninput="update_shear()"></td>
+                <td><input id="shearYZ" type="range" autocomplete="off" value="0." max="1.0" min="-1.0" step="0.1" oninput="update_shear()"></td>
+            </tr>
+        </table>
+
+        <table style="border: 0; padding: 10px;">
+        <tr>
+            <td colspan="3">
+                <b>Shading Type:</b>
+                <select id="shadingType" onchange="updateShadingType()">
+                    <option value="0">Flat Shading</option>
+                    <option value="1" selected>Gouraud Shading</option>
+                    <option value="2">Phong Shading</option>
+                </select>
+            </td>
+        </tr>
+        </table>
+    </p>
+
+</body>
+
+</html>
