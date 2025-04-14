@@ -26,20 +26,11 @@
     varying vec3 vLightLoc2;
     varying float vKa;
     uniform int fsShadingType;
-    uniform float clipPlaneX; // 茶壺的X軸裁剪平面
-    uniform float clipPlaneY; // CSIE的Y軸裁剪平面
-    uniform float clipPlaneZ; // 袋鼠的Z軸裁剪平面
-    uniform int objectID; // 當前繪製的物體ID
+    uniform float clipPlaneX; // 添加X軸裁剪平面位置
 
     void main(void) {
-        // 根據物體ID選擇不同的裁剪平面
-        if(objectID == 0 && fragPosition.x > clipPlaneX) {
-            discard; // 丟棄片段，不進行渲染
-        }
-        else if(objectID == 1 && fragPosition.y > clipPlaneY) {
-            discard; // 丟棄片段，不進行渲染
-        }
-        else if(objectID == 2 && fragPosition.z > clipPlaneZ) {
+        // 判斷是否被裁剪掉
+        if(fragPosition.x > clipPlaneX) {
             discard; // 丟棄片段，不進行渲染
         }
 
@@ -210,45 +201,37 @@
     var mvMatrix = mat4.create();
     var pMatrix  = mat4.create();
 
-    // 茶壺模型的頂點緩衝區
+    // Teapot model vertex buffers
     var teapotVertexPositionBuffer;
     var teapotVertexNormalBuffer;
     var teapotVertexFrontColorBuffer;
 
-    // CSIE模型的頂點緩衝區
-    var csieVertexPositionBuffer;
-    var csieVertexNormalBuffer;
-    var csieVertexFrontColorBuffer;
-
-    // 袋鼠模型的頂點緩衝區
+    // Kangaroo model vertex buffers
     var kangarooVertexPositionBuffer;
     var kangarooVertexNormalBuffer;
     var kangarooVertexFrontColorBuffer;
 
-    // 保存每個模型的基礎縮放值
+    // Base scale values for each model
     var teapotBaseScale = [0.7, 0.7, 0.7];
-    var csieBaseScale = [7.5, 7.5, 7.5];
-    var kangarooBaseScale = [6.0, 6.0, 6.0];
-    
-    // 保存每個模型的基礎位置
-    var teapotBasePosition = [-25, 0, -55];
-    var csieBasePosition = [10, 0, -40];
-    var kangarooBasePosition = [0, -3, -35];
+    var kangarooBaseScale = [20.0, 20.0, 20.0];
 
     var teapotAngle = 180;
     var lastTime    = 0;
-    var shadingType = 1; // 預設使用 Gouraud shading
+    var shadingType = 1; // Default: Gouraud shading
 
     var ka = 0.1;
-    var light_locations1 = new Float32Array([30., 20., -25.]); // 第一個光源位置
-    var light_colors1 = new Float32Array([1.0, 0.8, 0.8]); // 第一個光源顏色（紅色調）
-    var light_locations2 = new Float32Array([-20., 15., -40.]); // 第二個光源位置
-    var light_colors2 = new Float32Array([0.8, 0.8, 1.0]); // 第二個光源顏色（藍色調）
+    var light_locations1 = new Float32Array([30., 20., -25.]); // First light position
+    var light_colors1 = new Float32Array([1.0, 0.8, 0.8]); // First light color (reddish)
+    var light_locations2 = new Float32Array([-20., 15., -40.]); // Second light position
+    var light_colors2 = new Float32Array([0.8, 0.8, 1.0]); // Second light color (bluish)
     
-    // 三個物體的裁剪平面
-    var clipPlaneX = 0.0; // 茶壺的X軸裁剪平面
-    var clipPlaneY = 0.0; // CSIE的Y軸裁剪平面
-    var clipPlaneZ = 0.0; // 袋鼠的Z軸裁剪平面
+    // Clipping plane settings
+    var clipPlaneX = 0.0; // X-axis clipping plane for teapot
+    var clipPlaneZ = 0.0; // Z-axis clipping plane for kangaroo
+
+    // Debug related variables
+    var debugMode = false;
+    var frameCounter = 0;
 
     //*************************************************
     // Initialization functions
@@ -327,9 +310,12 @@
         gl.linkProgram(shaderProgram);
 
         if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            var infoLog = gl.getProgramInfoLog(shaderProgram);
+            console.error("Shader program link error:", infoLog);
             alert("Could not initialise shaders. Error: " + gl.getProgramInfoLog(shaderProgram));
             return;
         }
+        console.log("Shader program initialized successfully");
 
         gl.useProgram(shaderProgram);
 
@@ -348,13 +334,20 @@
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
         
-        // 設置三個裁剪平面位置
+        // Set clipping planes and object ID
         gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneX"), clipPlaneX);
-        gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneY"), clipPlaneY);
         gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneZ"), clipPlaneZ);
-        
-        // 初始物體ID設為0
-        gl.uniform1i(gl.getUniformLocation(shaderProgram, "objectID"), 0);
+        gl.uniform1i(gl.getUniformLocation(shaderProgram, "objectID"), 0); // Initial ID
+
+        // Check if all uniform variables are successfully acquired
+        if (debugMode) {
+            console.log("Shader variable location check:");
+            console.log(" - pMatrixUniform:", gl.getUniformLocation(shaderProgram, "uPMatrix"));
+            console.log(" - mvMatrixUniform:", gl.getUniformLocation(shaderProgram, "uMVMatrix"));
+            console.log(" - objectID uniformLocation:", gl.getUniformLocation(shaderProgram, "objectID"));
+            console.log(" - clipPlaneX uniformLocation:", gl.getUniformLocation(shaderProgram, "clipPlaneX"));
+            console.log(" - clipPlaneZ uniformLocation:", gl.getUniformLocation(shaderProgram, "clipPlaneZ"));
+        }
 
         shaderProgram.pMatrixUniform  = gl.getUniformLocation(shaderProgram, "uPMatrix");
         shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
@@ -370,6 +363,7 @@
     }
 
     function handleLoadedTeapot(teapotData) {
+        console.log("Teapot model loaded successfully, processing data...");
         teapotVertexPositionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexPositions), gl.STATIC_DRAW);
@@ -387,53 +381,29 @@
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexFrontcolors), gl.STATIC_DRAW);
         teapotVertexFrontColorBuffer.itemSize = 3;
         teapotVertexFrontColorBuffer.numItems = teapotData.vertexFrontcolors.length / 3;
+        
+        console.log("Teapot model processing completed. Vertex count:", teapotVertexPositionBuffer.numItems);
     }
 
     function loadTeapot() {
+        console.log("Starting to load teapot model...");
         var request = new XMLHttpRequest();
         request.open("GET", "./model/Teapot.json");
         request.onreadystatechange = function () {
             if (request.readyState == 4) {
-                handleLoadedTeapot(JSON.parse(request.responseText));
+                if (request.status == 200) {
+                    handleLoadedTeapot(JSON.parse(request.responseText));
+                } else {
+                    console.error("Failed to load teapot model, status code:", request.status);
+                }
             }
         }
         request.send();
     }
 
-    // 加載CSIE模型
-    function handleLoadedCSIE(csieData) {
-        csieVertexPositionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexPositionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexPositions), gl.STATIC_DRAW);
-        csieVertexPositionBuffer.itemSize = 3;
-        csieVertexPositionBuffer.numItems = csieData.vertexPositions.length / 3;
-
-        csieVertexNormalBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexNormalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexNormals), gl.STATIC_DRAW);
-        csieVertexNormalBuffer.itemSize = 3;
-        csieVertexNormalBuffer.numItems = csieData.vertexNormals.length / 3;
-
-        csieVertexFrontColorBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexFrontColorBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(csieData.vertexFrontcolors), gl.STATIC_DRAW);
-        csieVertexFrontColorBuffer.itemSize = 3;
-        csieVertexFrontColorBuffer.numItems = csieData.vertexFrontcolors.length / 3;
-    }
-
-    function loadCSIE() {
-        var request = new XMLHttpRequest();
-        request.open("GET", "./model/CSIE.json");
-        request.onreadystatechange = function () {
-            if (request.readyState == 4) {
-                handleLoadedCSIE(JSON.parse(request.responseText));
-            }
-        }
-        request.send();
-    }
-
-    // 加載袋鼠模型
+    // Kangaroo model loading
     function handleLoadedKangaroo(kangarooData) {
+        console.log("Kangaroo model loaded successfully, processing data...");
         kangarooVertexPositionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexPositionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(kangarooData.vertexPositions), gl.STATIC_DRAW);
@@ -451,14 +421,21 @@
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(kangarooData.vertexFrontcolors), gl.STATIC_DRAW);
         kangarooVertexFrontColorBuffer.itemSize = 3;
         kangarooVertexFrontColorBuffer.numItems = kangarooData.vertexFrontcolors.length / 3;
+        
+        console.log("Kangaroo model processing completed. Vertex count:", kangarooVertexPositionBuffer.numItems);
     }
 
     function loadKangaroo() {
+        console.log("Starting to load kangaroo model...");
         var request = new XMLHttpRequest();
         request.open("GET", "./model/Kangaroo.json");
         request.onreadystatechange = function () {
             if (request.readyState == 4) {
-                handleLoadedKangaroo(JSON.parse(request.responseText));
+                if (request.status == 200) {
+                    handleLoadedKangaroo(JSON.parse(request.responseText));
+                } else {
+                    console.error("Failed to load kangaroo model, status code:", request.status);
+                }
             }
         }
         request.send();
@@ -472,13 +449,10 @@
         gl.clearColor(ka, ka, ka, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        // 檢查模型是否已加載
+        // Check if models are loaded
         if (teapotVertexPositionBuffer == null || 
             teapotVertexNormalBuffer == null || 
             teapotVertexFrontColorBuffer == null ||
-            csieVertexPositionBuffer == null ||
-            csieVertexNormalBuffer == null ||
-            csieVertexFrontColorBuffer == null ||
             kangarooVertexPositionBuffer == null ||
             kangarooVertexNormalBuffer == null ||
             kangarooVertexFrontColorBuffer == null) {
@@ -486,10 +460,21 @@
             return;
         }
         
-        // 設置投影矩陣
+        // Output debug info every 60 frames (when debug mode is on)
+        if (debugMode && frameCounter % 60 === 0) {
+            console.log("---- Rendering Status ----");
+            console.log("Current shading mode:", shadingType);
+            console.log("Light 1 position:", light_locations1);
+            console.log("Light 2 position:", light_locations2);
+            console.log("X-axis clipping plane:", clipPlaneX);
+            console.log("Z-axis clipping plane:", clipPlaneZ);
+        }
+        frameCounter++;
+        
+        // Set projection matrix
         mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
         
-        // 設置通用的光照參數
+        // Set common lighting parameters
         gl.uniform1f(gl.getUniformLocation(shaderProgram, "Ka"), ka);
         gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc1"), light_locations1);
         gl.uniform3fv(gl.getUniformLocation(shaderProgram, "lightLoc2"), light_locations2);
@@ -498,57 +483,65 @@
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "vsShadingType"), shadingType);
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "fsShadingType"), shadingType);
 
-        // 繪製茶壺
-        drawTeapot();
+        // Draw teapot - on the left side
+        drawTeapot(-15, 0, -50);
         
-        // 繪製CSIE
-        drawCSIE();
-        
-        // 繪製袋鼠
-        drawKangaroo();
+        // Draw kangaroo - on the right side
+        drawKangaroo(15, 0, -50);
     }
     
-    // 繪製茶壺的函數
-    function drawTeapot() {
-        // 重置模型視圖矩陣
+    // Function to draw teapot
+    function drawTeapot(posX, posY, posZ) {
+        // Output teapot transformation parameters in debug mode
+        if (debugMode && frameCounter % 60 === 0) {
+            console.log("---- Teapot Rendering Info ----");
+            console.log("Position: [" + posX + ", " + posY + ", " + posZ + "]");
+            var rotateVec = update_rotate();
+            var scaleVec = update_scale();
+            var shearVals = update_shear();
+            console.log("Rotation: [" + rotateVec[0] + ", " + rotateVec[1] + ", " + rotateVec[2] + "]");
+            console.log("Scale: [" + scaleVec[0] + ", " + scaleVec[1] + ", " + scaleVec[2] + "]");
+            console.log("Shear: [" + shearVals[0] + ", " + shearVals[1] + ", " + shearVals[2] + "]");
+        }
+        
+        // Reset model-view matrix
         mat4.identity(mvMatrix);
         
-        // 獲取用戶設置的變換參數
+        // Get user-defined transformation parameters
         var trans = update_trans();
         var rotate = update_rotate();
         var scale = update_scale();
         var shear = update_shear();
         
-        // 設置茶壺位置 - 基礎位置 + 用戶設置的平移值
-        mat4.translate(mvMatrix, [
-            teapotBasePosition[0] + trans[0],
-            teapotBasePosition[1] + trans[1],
-            teapotBasePosition[2] + trans[2]
-        ]);
+        // Set teapot position
+        mat4.translate(mvMatrix, [posX, posY, posZ]);
         
-        // 應用旋轉 - 使用用戶設置的旋轉值
+        // Apply slider-controlled translation
+        mat4.translate(mvMatrix, [trans[0], trans[1], trans[2]]);
+        
+        // Apply rotation - using user-defined rotation values
         mat4.rotate(mvMatrix, degToRad(rotate[0]), [1, 0, 0]);
-        mat4.rotate(mvMatrix, degToRad(rotate[1]), [0, 1, 0]);
+        mat4.rotate(mvMatrix, degToRad(rotate[1] + teapotAngle), [0, 1, 0]);
         mat4.rotate(mvMatrix, degToRad(rotate[2]), [0, 0, 1]);
         
-        // 應用縮放 - 使用基礎縮放值和用戶設置的縮放值相乘
+        // Apply scaling - multiply base scale values with user-defined scale values
         mat4.scale(mvMatrix, [
             teapotBaseScale[0] * scale[0], 
             teapotBaseScale[1] * scale[1], 
             teapotBaseScale[2] * scale[2]
         ]);
         
-        // 應用剪切 - 使用用戶設置的剪切值
+        // Apply shear - using user-defined shear values
         applyShear(mvMatrix, shear[0], shear[1], shear[2]);
         
-        // 設置變換參數
+        // Set transformation parameters
         setMatrixUniforms();
         
-        // 設置茶壺的裁剪平面
+        // Set teapot's clipping plane and object ID
         gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneX"), clipPlaneX);
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "objectID"), 0);
         
-        // 綁定茶壺的頂點數據
+        // Bind teapot's vertex data
         gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
                             teapotVertexPositionBuffer.itemSize, 
@@ -557,7 +550,7 @@
                             0, 
                             0);
 
-        // 綁定茶壺的顏色數據
+        // Bind teapot's color data
         gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
                             teapotVertexFrontColorBuffer.itemSize, 
@@ -566,7 +559,7 @@
                             0, 
                             0);
         
-        // 綁定茶壺的法線數據
+        // Bind teapot's normal data
         gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
                             teapotVertexNormalBuffer.itemSize, 
@@ -575,122 +568,62 @@
                             0, 
                             0);
         
-        // 繪製茶壺
+        // Draw teapot
         gl.drawArrays(gl.TRIANGLES, 0, teapotVertexPositionBuffer.numItems);
     }
     
-    // 繪製CSIE的函數
-    function drawCSIE() {
-        // 重置模型視圖矩陣
+    // Function to draw kangaroo
+    function drawKangaroo(posX, posY, posZ) {
+        // Output kangaroo transformation parameters in debug mode
+        if (debugMode && frameCounter % 60 === 0) {
+            console.log("---- Kangaroo Rendering Info ----");
+            console.log("Position: [" + posX + ", " + posY + ", " + posZ + "]");
+            var rotateVec = update_rotate();
+            var scaleVec = update_scale();
+            var shearVals = update_shear();
+            console.log("Rotation: [" + rotateVec[0] + ", " + rotateVec[1] + ", " + rotateVec[2] + "]");
+            console.log("Scale: [" + scaleVec[0] + ", " + scaleVec[1] + ", " + scaleVec[2] + "]");
+            console.log("Shear: [" + shearVals[0] + ", " + shearVals[1] + ", " + shearVals[2] + "]");
+        }
+        
+        // Reset model-view matrix
         mat4.identity(mvMatrix);
         
-        // 獲取用戶設置的變換參數
+        // Get user-defined transformation parameters
         var trans = update_trans();
         var rotate = update_rotate();
         var scale = update_scale();
         var shear = update_shear();
         
-        // 設置CSIE位置 - 基礎位置 + 用戶設置的平移值
-        mat4.translate(mvMatrix, [
-            csieBasePosition[0] + trans[0],
-            csieBasePosition[1] + trans[1],
-            csieBasePosition[2] + trans[2]
-        ]);
+        // Set kangaroo position
+        mat4.translate(mvMatrix, [posX, posY, posZ]);
         
-        // 應用旋轉 - 使用用戶設置的旋轉值
+        // Apply slider-controlled translation
+        mat4.translate(mvMatrix, [trans[0], trans[1], trans[2]]);
+        
+        // Apply rotation - using user-defined rotation values
         mat4.rotate(mvMatrix, degToRad(rotate[0]), [1, 0, 0]);
-        mat4.rotate(mvMatrix, degToRad(rotate[1]), [0, 1, 0]);
+        mat4.rotate(mvMatrix, degToRad(rotate[1] + teapotAngle), [0, 1, 0]);
         mat4.rotate(mvMatrix, degToRad(rotate[2]), [0, 0, 1]);
         
-        // 應用縮放 - 使用基礎縮放值和用戶設置的縮放值相乘
-        mat4.scale(mvMatrix, [
-            csieBaseScale[0] * scale[0], 
-            csieBaseScale[1] * scale[1], 
-            csieBaseScale[2] * scale[2]
-        ]);
-        
-        // 應用剪切 - 使用用戶設置的剪切值
-        applyShear(mvMatrix, shear[0], shear[1], shear[2]);
-        
-        // 設置變換參數
-        setMatrixUniforms();
-        
-        // 設置CSIE的裁剪平面
-        gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneY"), clipPlaneY);
-        gl.uniform1i(gl.getUniformLocation(shaderProgram, "objectID"), 1);
-        
-        // 綁定CSIE的頂點數據
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexPositionBuffer);
-        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
-                            csieVertexPositionBuffer.itemSize, 
-                            gl.FLOAT, 
-                            false, 
-                            0, 
-                            0);
-
-        // 綁定CSIE的顏色數據
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexFrontColorBuffer);
-        gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
-                            csieVertexFrontColorBuffer.itemSize, 
-                            gl.FLOAT, 
-                            false, 
-                            0, 
-                            0);
-        
-        // 綁定CSIE的法線數據
-        gl.bindBuffer(gl.ARRAY_BUFFER, csieVertexNormalBuffer);
-        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
-                            csieVertexNormalBuffer.itemSize, 
-                            gl.FLOAT, 
-                            false, 
-                            0, 
-                            0);
-        
-        // 繪製CSIE
-        gl.drawArrays(gl.TRIANGLES, 0, csieVertexPositionBuffer.numItems);
-    }
-    
-    // 繪製袋鼠的函數
-    function drawKangaroo() {
-        // 重置模型視圖矩陣
-        mat4.identity(mvMatrix);
-        
-        // 獲取用戶設置的變換參數
-        var trans = update_trans();
-        var rotate = update_rotate();
-        var scale = update_scale();
-        var shear = update_shear();
-        
-        // 設置袋鼠位置 - 基礎位置 + 用戶設置的平移值
-        mat4.translate(mvMatrix, [
-            kangarooBasePosition[0] + trans[0],
-            kangarooBasePosition[1] + trans[1],
-            kangarooBasePosition[2] + trans[2]
-        ]);
-        
-        // 應用旋轉 - 使用用戶設置的旋轉值
-        mat4.rotate(mvMatrix, degToRad(rotate[0]), [1, 0, 0]);
-        mat4.rotate(mvMatrix, degToRad(rotate[1]), [0, 1, 0]);
-        mat4.rotate(mvMatrix, degToRad(rotate[2]), [0, 0, 1]);
-        
-        // 應用縮放 - 使用基礎縮放值和用戶設置的縮放值相乘
+        // Apply scaling - multiply base scale values with user-defined scale values
         mat4.scale(mvMatrix, [
             kangarooBaseScale[0] * scale[0], 
             kangarooBaseScale[1] * scale[1], 
             kangarooBaseScale[2] * scale[2]
         ]);
         
-        // 應用剪切 - 使用用戶設置的剪切值
+        // Apply shear - using user-defined shear values
         applyShear(mvMatrix, shear[0], shear[1], shear[2]);
         
-        // 設置變換參數
+        // Set transformation parameters
         setMatrixUniforms();
         
-        // 設置袋鼠的裁剪平面
+        // Set kangaroo's clipping plane and object ID
         gl.uniform1f(gl.getUniformLocation(shaderProgram, "clipPlaneZ"), clipPlaneZ);
         gl.uniform1i(gl.getUniformLocation(shaderProgram, "objectID"), 2);
         
-        // 綁定袋鼠的頂點數據
+        // Bind kangaroo's vertex data
         gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexPositionBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
                             kangarooVertexPositionBuffer.itemSize, 
@@ -699,7 +632,7 @@
                             0, 
                             0);
 
-        // 綁定袋鼠的顏色數據
+        // Bind kangaroo's color data
         gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexFrontColorBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
                             kangarooVertexFrontColorBuffer.itemSize, 
@@ -708,7 +641,7 @@
                             0, 
                             0);
         
-        // 綁定袋鼠的法線數據
+        // Bind kangaroo's normal data
         gl.bindBuffer(gl.ARRAY_BUFFER, kangarooVertexNormalBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
                             kangarooVertexNormalBuffer.itemSize, 
@@ -717,7 +650,7 @@
                             0, 
                             0);
         
-        // 繪製袋鼠
+        // Draw kangaroo
         gl.drawArrays(gl.TRIANGLES, 0, kangarooVertexPositionBuffer.numItems);
     }
 
@@ -742,11 +675,24 @@
         initGL(canvas);
         initShaders();
         loadTeapot();
-        loadCSIE();
-        loadKangaroo();
+        loadKangaroo(); // Load kangaroo model
 
         gl.clearColor(ka, ka, ka, 1.0);
         gl.enable(gl.DEPTH_TEST);
+
+        // Add WebGL context loss handling
+        canvas.addEventListener("webglcontextlost", function(event) {
+            event.preventDefault();
+            console.error("WebGL context lost");
+        }, false);
+        
+        canvas.addEventListener("webglcontextrestored", function() {
+            console.log("WebGL context restored, reinitializing...");
+            initGL(canvas);
+            initShaders();
+            loadTeapot();
+            loadKangaroo();
+        }, false);
 
         tick();
     }
@@ -830,11 +776,36 @@
         mat4.multiply(matrix, shearMatrix);
     }
     
-    // 添加裁剪平面更新函数
-    function update_clip_plane(){
+    // Function to update clipping planes
+    function update_clip_planes(){
         clipPlaneX = document.getElementById("clipPlaneX").value;
-        clipPlaneY = document.getElementById("clipPlaneY").value;
         clipPlaneZ = document.getElementById("clipPlaneZ").value;
+    }
+
+    // Debug mode toggle function
+    function toggleDebug() {
+        debugMode = !debugMode;
+        document.getElementById("debugStatus").innerHTML = debugMode ? "ON" : "OFF";
+        document.getElementById("debugStatus").style.color = debugMode ? "green" : "gray";
+        document.getElementById("debugButton").innerHTML = debugMode ? "Disable Debug Mode" : "Enable Debug Mode";
+        console.log("Debug mode " + (debugMode ? "enabled" : "disabled"));
+        
+        if (debugMode) {
+            // Output current status immediately
+            console.log("===== WebGL Status Check =====");
+            console.log("Canvas size:", gl.viewportWidth, "x", gl.viewportHeight);
+            console.log("Teapot model load status:", teapotVertexPositionBuffer ? "Loaded" : "Not loaded");
+            console.log("Kangaroo model load status:", kangarooVertexPositionBuffer ? "Loaded" : "Not loaded");
+            console.log("Shader program status:", shaderProgram ? "Initialized" : "Not initialized");
+            
+            // Check WebGL context errors
+            var glError = gl.getError();
+            if (glError !== gl.NO_ERROR) {
+                console.error("WebGL error:", glError);
+            } else {
+                console.log("WebGL status: Normal");
+            }
+        }
     }
 
     // 新增著色器切換函數
@@ -866,7 +837,7 @@
     <p style="position: absolute; left: 1%; top: 1%; max-width: 30%; min-width: 30%; ">
 
         <p>
-            <label for="shading">使用著色類型: <span id="shadingTypeLabel">Gouraud shading</span></label>
+            <label for="shading">Shading Type: <span id="shadingTypeLabel">Gouraud shading</span></label>
         </p>
 
         </br>
@@ -912,13 +883,10 @@
         <span>Clipping</span>
         <table>
             <tr>
-                <td>茶壺 (X Plane): <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneX" type="range" autocomplete="off" value="0." max="20." min="-20." step="0.5" oninput="update_clip_plane()"></td>
+                <td>Teapot (X Plane): <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneX" type="range" autocomplete="off" value="0." max="20." min="-20." step="0.5" oninput="update_clip_planes()"></td>
             </tr>
             <tr>
-                <td>CSIE (Y Plane): <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneY" type="range" autocomplete="off" value="0." max="20." min="-20." step="0.5" oninput="update_clip_plane()"></td>
-            </tr>
-            <tr>
-                <td>袋鼠 (Z Plane): <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneZ" type="range" autocomplete="off" value="0." max="20." min="-40." step="0.5" oninput="update_clip_plane()"></td>
+                <td>Kangaroo (Z Plane): <input style="max-width: 70%; vertical-align: middle;" id="clipPlaneZ" type="range" autocomplete="off" value="0." max="20." min="-40." step="0.5" oninput="update_clip_planes()"></td>
             </tr>
         </table>
         </br>
@@ -967,6 +935,12 @@
                     <option value="1" selected>Gouraud Shading</option>
                     <option value="2">Phong Shading</option>
                 </select>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="3">
+                <button onclick="toggleDebug()" id="debugButton">Enable Debug Mode</button>
+                <span id="debugStatus" style="margin-left: 10px; color: gray;">OFF</span>
             </td>
         </tr>
         </table>
